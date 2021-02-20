@@ -157,7 +157,7 @@ export default defineComponent({
         if (this.sel?.name === currentTicker.name) {
           this.graph.push(data.USD);
         }
-      }, 5 000);
+      }, 5000);
       this.ticker = "";
     },
     handleDelete(tickerToRemove: Ticker) {
