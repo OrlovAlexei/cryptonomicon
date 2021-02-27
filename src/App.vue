@@ -1,5 +1,24 @@
 <template>
   <div class="container mx-auto flex flex-col items-center bg-gray-100 p-4">
+    <div
+      v-if="showLoadingScreen"
+      class="fixed w-100 h-100 opacity-80 bg-purple-800 inset-0 z-50 flex items-center justify-center"
+    >
+      <svg
+        class="animate-spin -ml-1 mr-3 h-12 w-12 text-white"
+        xmlns="http://www.w3.org/2000/svg"
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+        <path
+          class="opacity-75"
+          fill="currentColor"
+          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+        ></path>
+      </svg>
+    </div>
+
     <div class="container">
       <div class="w-full my-4"></div>
       <section>
@@ -10,6 +29,7 @@
               <input
                 v-model="ticker"
                 @keydown.enter="add"
+                @input="calcTicketsSuggestions"
                 type="text"
                 name="wallet"
                 id="wallet"
@@ -17,6 +37,17 @@
                 placeholder="Например DOGE"
               />
             </div>
+            <div v-if="ticketsSuggestions.length" class="flex bg-white shadow-md p-1 rounded-md shadow-md flex-wrap">
+              <span
+                v-for="suggestion in ticketsSuggestions"
+                @click="addByName(suggestion)"
+                :key="suggestion"
+                class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer"
+              >
+                {{ suggestion }}
+              </span>
+            </div>
+            <div v-if="isTickerAllredyAdded" class="text-sm text-red-600">Такой тикер уже добавлен</div>
           </div>
         </div>
         <button
@@ -129,19 +160,63 @@ interface Ticker {
   price: string;
 }
 
+interface TokenSummary {
+  FullName: string;
+  Id: string;
+  ImageUrl: string;
+  Symbol: string;
+}
+
 export default defineComponent({
   name: "App",
   data() {
     return {
-      ticker: "",
+      ticker: "" as string,
       tickers: [] as Ticker[],
       sel: null as Ticker | null,
       graph: [] as number[],
+      summaryTickers: {} as Record<string, TokenSummary>,
+      showLoadingScreen: true as boolean,
+      isTickerAllredyAdded: false as boolean,
+      ticketsSuggestions: [] as string[],
     };
   },
+  created: function() {
+    this.loadTickersSummary();
+  },
   methods: {
+    async loadTickersSummary() {
+      const f = await fetch(`https://min-api.cryptocompare.com/data/all/coinlist?summary=true&api_key=API_KEY`);
+      const data = await f.json();
+      this.summaryTickers = data.Data;
+      this.showLoadingScreen = false;
+    },
     add() {
+      if (this.tickers.map(t => t.name.toLowerCase()).includes(this.ticker.toLowerCase())) {
+        this.isTickerAllredyAdded = true;
+        return;
+      }
       const currentTicker = { name: this.ticker, price: "-" };
+      this.tickers.push(currentTicker);
+      setInterval(async () => {
+        const f = await fetch(
+          `https://min-api.cryptocompare.com/data/price?fsym=${currentTicker.name}&tsyms=USD&api_key=API_KEY`,
+        );
+        const data = await f.json();
+        const tickerForUpdate = this.tickers.find(t => t.name === currentTicker.name);
+        if (!tickerForUpdate) {
+          return;
+        }
+        tickerForUpdate.price = data.USD > 1 ? data.USD.toFixed(2) : data.USD.toPrecision(2);
+
+        if (this.sel?.name === currentTicker.name) {
+          this.graph.push(data.USD);
+        }
+      }, 5000);
+      this.ticker = "";
+    },
+    addByName(name: string) {
+      const currentTicker = { name: name, price: "-" };
       this.tickers.push(currentTicker);
       setInterval(async () => {
         const f = await fetch(
@@ -171,6 +246,24 @@ export default defineComponent({
     select(ticker: Ticker) {
       this.sel = ticker;
       this.graph = [];
+    },
+    calcTicketsSuggestions() {
+      if (this.isTickerAllredyAdded) {
+        this.isTickerAllredyAdded = false;
+      }
+      if (!this.ticker) {
+        this.ticketsSuggestions = [];
+      }
+      this.ticketsSuggestions = Object.entries(this.summaryTickers)
+        .filter(value => {
+          const [_, summary] = value;
+          return summary.FullName.includes(this.ticker) || summary.Symbol.includes(this.ticker);
+        })
+        .map(value => {
+          const [key] = value;
+          return key;
+        })
+        .slice(0, 4);
     },
   },
 });
