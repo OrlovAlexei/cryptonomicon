@@ -1,5 +1,5 @@
 <template>
-  <div class="container mx-auto flex flex-col items-center bg-gray-100 p-4">
+  <div class="container mx-auto flex flex-col items-center   p-4">
     <div
       v-if="showLoadingScreen"
       class="fixed w-100 h-100 opacity-80 bg-purple-800 inset-0 z-50 flex items-center justify-center"
@@ -40,7 +40,7 @@
             <div v-if="ticketsSuggestions.length" class="flex bg-white shadow-md p-1 rounded-md shadow-md flex-wrap">
               <span
                 v-for="suggestion in ticketsSuggestions"
-                @click="addByName(suggestion)"
+                @click="addTickerByName(suggestion)"
                 :key="suggestion"
                 class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer"
               >
@@ -196,27 +196,10 @@ export default defineComponent({
         this.isTickerAllredyAdded = true;
         return;
       }
-      const currentTicker = { name: this.ticker, price: "-" };
-      this.tickers.push(currentTicker);
-      setInterval(async () => {
-        const f = await fetch(
-          `https://min-api.cryptocompare.com/data/price?fsym=${currentTicker.name}&tsyms=USD&api_key=API_KEY`,
-        );
-        const data = await f.json();
-        const tickerForUpdate = this.tickers.find(t => t.name === currentTicker.name);
-        if (!tickerForUpdate) {
-          return;
-        }
-        tickerForUpdate.price = data.USD > 1 ? data.USD.toFixed(2) : data.USD.toPrecision(2);
-
-        if (this.sel?.name === currentTicker.name) {
-          this.graph.push(data.USD);
-        }
-      }, 5000);
-      this.ticker = "";
+      this.addTickerByName(this.ticker);
     },
-    addByName(name: string) {
-      const currentTicker = { name: name, price: "-" };
+    addTickerByName(tickerName: string) {
+      const currentTicker = { name: tickerName, price: "-" };
       this.tickers.push(currentTicker);
       setInterval(async () => {
         const f = await fetch(
@@ -241,6 +224,7 @@ export default defineComponent({
     normalizeGraph() {
       const max = Math.max(...this.graph);
       const min = Math.min(...this.graph);
+      console.log(max, min);
       return this.graph.map(entry => 5 + ((entry - min) * 95) / (max - min));
     },
     select(ticker: Ticker) {
