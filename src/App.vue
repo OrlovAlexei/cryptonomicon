@@ -183,12 +183,15 @@ export default defineComponent({
   },
   created: function() {
     this.loadTickersSummary();
+    const tickerData = localStorage.getItem("crypto-list");
+    if (tickerData) {
+      this.tickers = JSON.parse(tickerData);
+      this.tickers.forEach(t => this.subscribeToTickerChenges(t.name));
+    }
   },
   methods: {
     async loadTickersSummary() {
-      const f = await fetch(
-        `https://min-api.cryptocompare.com/data/all/coinlist?summary=true&api_key=fb4c9575251bfdab5255a4e5c6db5d0239f1c5cc3c9558af074689e2876d1490`,
-      );
+      const f = await fetch(`https://min-api.cryptocompare.com/data/all/coinlist?summary=true&api_key=API_KEY`);
       const data = await f.json();
       this.summaryTickers = data.Data;
       this.showLoadingScreen = false;
@@ -203,22 +206,29 @@ export default defineComponent({
     addTickerByName(tickerName: string) {
       const currentTicker = { name: tickerName, price: "-" };
       this.tickers.push(currentTicker);
+
+      localStorage.setItem("crypto-list", JSON.stringify(this.tickers));
+
+      this.subscribeToTickerChenges(currentTicker.name);
+
+      this.ticker = "";
+    },
+    subscribeToTickerChenges(tickerName: string) {
       setInterval(async () => {
         const f = await fetch(
-          `https://min-api.cryptocompare.com/data/price?fsym=${currentTicker.name}&tsyms=USD&api_key=fb4c9575251bfdab5255a4e5c6db5d0239f1c5cc3c9558af074689e2876d1490`,
+          `https://min-api.cryptocompare.com/data/price?fsym=${tickerName}&tsyms=USD&api_key=API_KEY`,
         );
         const data = await f.json();
-        const tickerForUpdate = this.tickers.find(t => t.name === currentTicker.name);
+        const tickerForUpdate = this.tickers.find(t => t.name === tickerName);
         if (!tickerForUpdate) {
           return;
         }
         tickerForUpdate.price = data.USD > 1 ? data.USD.toFixed(2) : data.USD.toPrecision(2);
 
-        if (this.sel?.name === currentTicker.name) {
+        if (this.sel?.name === tickerName) {
           this.graph.push(data.USD);
         }
       }, 5000);
-      this.ticker = "";
     },
     handleDelete(tickerToRemove: Ticker) {
       this.tickers = this.tickers.filter(ticker => ticker !== tickerToRemove);
