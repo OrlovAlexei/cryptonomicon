@@ -186,7 +186,9 @@ export default defineComponent({
   },
   methods: {
     async loadTickersSummary() {
-      const f = await fetch(`https://min-api.cryptocompare.com/data/all/coinlist?summary=true&api_key=API_KEY`);
+      const f = await fetch(
+        `https://min-api.cryptocompare.com/data/all/coinlist?summary=true&api_key=fb4c9575251bfdab5255a4e5c6db5d0239f1c5cc3c9558af074689e2876d1490`,
+      );
       const data = await f.json();
       this.summaryTickers = data.Data;
       this.showLoadingScreen = false;
@@ -203,7 +205,7 @@ export default defineComponent({
       this.tickers.push(currentTicker);
       setInterval(async () => {
         const f = await fetch(
-          `https://min-api.cryptocompare.com/data/price?fsym=${currentTicker.name}&tsyms=USD&api_key=API_KEY`,
+          `https://min-api.cryptocompare.com/data/price?fsym=${currentTicker.name}&tsyms=USD&api_key=fb4c9575251bfdab5255a4e5c6db5d0239f1c5cc3c9558af074689e2876d1490`,
         );
         const data = await f.json();
         const tickerForUpdate = this.tickers.find(t => t.name === currentTicker.name);
