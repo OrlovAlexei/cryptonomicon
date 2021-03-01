@@ -21,6 +21,7 @@
 
     <div class="container">
       <div class="w-full my-4"></div>
+
       <section>
         <div class="flex">
           <div class="max-w-xs">
@@ -37,9 +38,9 @@
                 placeholder="Например DOGE"
               />
             </div>
-            <div v-if="ticketsSuggestions.length" class="flex bg-white shadow-md p-1 rounded-md shadow-md flex-wrap">
+            <div v-if="suggestedTickersName.length" class="flex bg-white shadow-md p-1 rounded-md shadow-md flex-wrap">
               <span
-                v-for="suggestion in ticketsSuggestions"
+                v-for="suggestion in suggestedTickersName"
                 @click="addTickerByName(suggestion)"
                 :key="suggestion"
                 class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer"
@@ -73,6 +74,7 @@
       </section>
 
       <hr class="w-full border-t border-gray-600 my-4" />
+
       <div>
         <button
           class="my-4 mx-2 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
@@ -88,17 +90,18 @@
         >
           Вперед
         </button>
-        <div>Фильтр: <input v-model="filter" /></div>
+        <div>Фильтр: <input v-model="filter" @input="page = 1" /></div>
       </div>
+
       <hr class="w-full border-t border-gray-600 my-4" />
 
       <dl class="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-3">
         <div
-          v-for="t in filteredTicketsList()"
+          v-for="t in paginatedTickets"
           :key="t.name"
           class="bg-white overflow-hidden shadow rounded-lg border-purple-800 border-solid cursor-pointer"
           :class="{
-            'border-4': sel === t,
+            'border-4': selelectedTicker === t,
           }"
           @click="select(t)"
         >
@@ -131,17 +134,17 @@
       </dl>
       <hr class="w-full border-t border-gray-600 my-4" />
 
-      <section class="relative" v-if="sel">
-        <h3 class="text-lg leading-6 font-medium text-gray-900 my-8">{{ sel.name }} - USD</h3>
+      <section class="relative" v-if="selelectedTicker">
+        <h3 class="text-lg leading-6 font-medium text-gray-900 my-8">{{ selelectedTicker.name }} - USD</h3>
         <div class="flex items-end border-gray-600 border-b border-l h-64">
           <div
-            v-for="(bar, idx) in normalizeGraph()"
+            v-for="(bar, idx) in normalizedGraph"
             :key="idx"
             :style="{ height: `${bar}%` }"
             class="bg-purple-800 border w-10 "
           ></div>
         </div>
-        <button @click="sel = null" type="button" class="absolute top-0 right-0">
+        <button @click="selelectedTicker = null" type="button" class="absolute top-0 right-0">
           <svg
             xmlns="http://www.w3.org/2000/svg"
             xmlns:xlink="http://www.w3.org/1999/xlink"
@@ -184,20 +187,24 @@ interface TokenSummary {
   Symbol: string;
 }
 
+interface PageStateOptions {
+  filter: string;
+  page: number;
+}
+
 export default defineComponent({
   name: "App",
   data() {
     return {
       ticker: "" as string,
+      filter: "" as string,
+
       tickers: [] as Ticker[],
-      sel: null as Ticker | null,
+      selelectedTicker: null as Ticker | null,
+
       graph: [] as number[],
       summaryTickers: {} as Record<string, TokenSummary>,
-      showLoadingScreen: true as boolean,
-      isTickerAllredyAdded: false as boolean,
-      ticketsSuggestions: [] as string[],
-      filter: "" as string,
-      hasNextPage: true,
+
       page: 1,
     };
   },
@@ -213,10 +220,12 @@ export default defineComponent({
     }
 
     this.loadTickersSummary();
-    const tickerData = localStorage.getItem("crypto-list");
-    if (tickerData) {
-      this.tickers = JSON.parse(tickerData);
-      this.tickers.forEach(t => this.subscribeToTickerChenges(t.name));
+
+    const lsTickerData = localStorage.getItem("crypto-list");
+    if (lsTickerData) {
+      const parced = JSON.parse(lsTickerData) as Ticker[];
+      this.tickers = parced;
+      parced.forEach(t => this.subscribeToTickerChenges(t.name));
     }
   },
   methods: {
@@ -224,29 +233,25 @@ export default defineComponent({
       const f = await fetch(`https://min-api.cryptocompare.com/data/all/coinlist?summary=true&api_key=API_KEY`);
       const data = await f.json();
       this.summaryTickers = data.Data;
-      this.showLoadingScreen = false;
     },
+
     add() {
       if (this.tickers.map(t => t.name.toLowerCase()).includes(this.ticker.toLowerCase())) {
-        this.isTickerAllredyAdded = true;
         return;
       }
       this.addTickerByName(this.ticker);
     },
-    writeToListToLocalStorage(tickersToLocalStorage: Ticker[]) {
-      localStorage.setItem("crypto-list", JSON.stringify(tickersToLocalStorage));
-    },
-    addTickerByName(tickerName: string) {
-      const currentTicker = { name: tickerName, price: "-" };
-      this.tickers.push(currentTicker);
 
-      this.writeToListToLocalStorage(this.tickers);
+    addTickerByName(tickerName: string) {
+      const currentTicker = { name: tickerName.toUpperCase(), price: "-" };
+      this.tickers = [...this.tickers, currentTicker];
 
       this.subscribeToTickerChenges(currentTicker.name);
 
       this.ticker = "";
       this.filter = "";
     },
+
     subscribeToTickerChenges(tickerName: string) {
       setInterval(async () => {
         const f = await fetch(
@@ -259,33 +264,54 @@ export default defineComponent({
         }
         tickerForUpdate.price = data.USD > 1 ? data.USD.toFixed(2) : data.USD.toPrecision(2);
 
-        if (this.sel?.name === tickerName) {
+        if (this.selelectedTicker?.name === tickerName) {
           this.graph.push(data.USD);
         }
       }, 5000);
     },
+
     handleDelete(tickerToRemove: Ticker) {
       this.tickers = this.tickers.filter(ticker => ticker !== tickerToRemove);
-      this.writeToListToLocalStorage(this.tickers);
     },
-    normalizeGraph() {
+
+    select(ticker: Ticker) {
+      this.selelectedTicker = ticker;
+    },
+  },
+  computed: {
+    startIndex(): number {
+      return (this.page - 1) * 6;
+    },
+    endIndex(): number {
+      return this.page * 6;
+    },
+    filteredTickets(): Ticker[] {
+      return this.tickers.filter(t => t.name.includes(this.filter));
+    },
+    paginatedTickets(): Ticker[] {
+      return this.filteredTickets.slice(this.startIndex, this.endIndex);
+    },
+    hasNextPage(): boolean {
+      return this.filteredTickets.length > this.endIndex;
+    },
+    showLoadingScreen(): boolean {
+      return Object.keys(this.summaryTickers).length === 0;
+    },
+    normalizedGraph(): number[] {
       const max = Math.max(...this.graph);
       const min = Math.min(...this.graph);
-      console.log(max, min);
+
+      if (max === min) {
+        return this.graph.map(() => 50);
+      }
+
       return this.graph.map(entry => 5 + ((entry - min) * 95) / (max - min));
     },
-    select(ticker: Ticker) {
-      this.sel = ticker;
-      this.graph = [];
-    },
-    calcTicketsSuggestions() {
-      if (this.isTickerAllredyAdded) {
-        this.isTickerAllredyAdded = false;
-      }
+    suggestedTickersName(): string[] {
       if (!this.ticker) {
-        this.ticketsSuggestions = [];
+        return [];
       }
-      this.ticketsSuggestions = Object.entries(this.summaryTickers)
+      return Object.entries(this.summaryTickers)
         .filter(value => {
           const [_, summary] = value;
           return summary.FullName.includes(this.ticker) || summary.Symbol.includes(this.ticker);
@@ -296,32 +322,34 @@ export default defineComponent({
         })
         .slice(0, 4);
     },
-    filteredTicketsList(): Ticker[] {
-      const start = (this.page - 1) * 6;
-      const end = this.page * 6;
-
-      const filteredTickers = this.tickers.filter(t => t.name.includes(this.filter));
-
-      this.hasNextPage = filteredTickers.length > end;
-
-      return filteredTickers.slice(start, end);
+    pageStateOptions(): PageStateOptions {
+      return {
+        filter: this.filter,
+        page: this.page,
+      };
+    },
+    isTickerAllredyAdded(): boolean {
+      return this.tickers.map(t => t.name).includes(this.ticker);
     },
   },
+
   watch: {
+    tickers() {
+      localStorage.setItem("crypto-list", JSON.stringify(this.tickers));
+    },
+    selelectedTicker() {
+      this.graph = [];
+    },
+    paginatedTickets() {
+      if (this.paginatedTickets.length === 0 && this.page > 1) {
+        this.page -= 1;
+      }
+    },
+    pageStateOptions(v) {
+      window.history.pushState(null, document.title, `${window.location.pathname}?filter=${v.filter}&page=${v.page}`);
+    },
     filter() {
       this.page = 1;
-      window.history.pushState(
-        null,
-        document.title,
-        `${window.location.pathname}?filter=${this.filter}&page=${this.page}`,
-      );
-    },
-    page() {
-      window.history.pushState(
-        null,
-        document.title,
-        `${window.location.pathname}?filter=${this.filter}&page=${this.page}`,
-      );
     },
   },
 });
