@@ -108,7 +108,7 @@
           <div class="px-4 py-5 sm:p-6 text-center">
             <dt class="text-sm font-medium text-gray-500 truncate">{{ t.name }} - USD</dt>
             <dd class="mt-1 text-3xl font-semibold text-gray-900">
-              {{ t.price }}
+              {{ formatPrice(t.price) }}
             </dd>
           </div>
           <div class="w-full border-t border-gray-200"></div>
@@ -174,17 +174,11 @@
 
 <script lang="ts">
 import { defineComponent } from "vue";
+import { api, TokenSummary } from "./api";
 
 interface Ticker {
   name: string;
   price: string;
-}
-
-interface TokenSummary {
-  FullName: string;
-  Id: string;
-  ImageUrl: string;
-  Symbol: string;
 }
 
 interface PageStateOptions {
@@ -194,6 +188,7 @@ interface PageStateOptions {
 
 export default defineComponent({
   name: "App",
+
   data() {
     return {
       ticker: "" as string,
@@ -208,6 +203,7 @@ export default defineComponent({
       page: 1,
     };
   },
+
   created: function() {
     const windowData = Object.fromEntries(new URL(window.location.toString()).searchParams.entries());
 
@@ -228,11 +224,19 @@ export default defineComponent({
       parced.forEach(t => this.subscribeToTickerChenges(t.name));
     }
   },
+
   methods: {
+    formatPrice(price: string | number): string {
+      if (price === "-") {
+        return price;
+      }
+      const value = Number(price);
+      return value > 1 ? value.toFixed(2) : value.toPrecision(2);
+    },
+
     async loadTickersSummary() {
-      const f = await fetch(`https://min-api.cryptocompare.com/data/all/coinlist?summary=true&api_key=API_KEY`);
-      const data = await f.json();
-      this.summaryTickers = data.Data;
+      const { Data } = await api.loadTickersSummary();
+      this.summaryTickers = Data;
     },
 
     add() {
@@ -253,31 +257,38 @@ export default defineComponent({
     },
 
     subscribeToTickerChenges(tickerName: string) {
-      setInterval(async () => {
-        const f = await fetch(
-          `https://min-api.cryptocompare.com/data/price?fsym=${tickerName}&tsyms=USD&api_key=API_KEY`,
-        );
-        const data = await f.json();
-        const tickerForUpdate = this.tickers.find(t => t.name === tickerName);
-        if (!tickerForUpdate) {
-          return;
-        }
-        tickerForUpdate.price = data.USD > 1 ? data.USD.toFixed(2) : data.USD.toPrecision(2);
+      api.subscribeToTicker(tickerName, newPrice => {
+        this.updateTickerPrice(tickerName, newPrice);
+      });
+      // setInterval(async () => {
+      //   const { unSubscribeFromTicker } = await api.subscribeToTicker(tickerName, () => {});
 
-        if (this.selelectedTicker?.name === tickerName) {
-          this.graph.push(data.USD);
-        }
-      }, 5000);
+      //   const tickerForUpdate = this.tickers.find(t => t.name === tickerName);
+      //   if (!tickerForUpdate) {
+      //     return;
+      //   }
+      //   tickerForUpdate.price = data.USD;
+
+      //   if (this.selelectedTicker?.name === tickerName) {
+      //     this.graph.push(data.USD);
+      //   }
+      // }, 5000);
+    },
+
+    updateTickerPrice(tickerName: string, newPrice: number) {
+      this.tickers.filter(t => t.name === tickerName).forEach(t => (t.price = newPrice.toString()));
     },
 
     handleDelete(tickerToRemove: Ticker) {
       this.tickers = this.tickers.filter(ticker => ticker !== tickerToRemove);
+      api.unSubscribeFromTicker(tickerToRemove.name);
     },
 
     select(ticker: Ticker) {
       this.selelectedTicker = ticker;
     },
   },
+
   computed: {
     startIndex(): number {
       return (this.page - 1) * 6;
