@@ -7,44 +7,57 @@ export interface TokenSummary {
   Symbol: string;
 }
 
-type PriceChanged = (newPrice: number) => void;
-
 const handlers = new Map<string, Array<PriceChanged>>();
 
-const loadTickers = () => {
-  if (handlers.size === 0) {
+const socket = new WebSocket(`wss://streamer.cryptocompare.com/v2?api_key=${API_KEY}`);
+
+socket.addEventListener("message", e => {
+  const { TYPE: type, FROMSYMBOL: updatedTicker, PRICE: newPrice } = JSON.parse(e.data);
+
+  if (type !== "5" || !newPrice) {
     return;
   }
 
-  fetch(
-    `https://min-api.cryptocompare.com/data/pricemulti?fsyms=${Array.from(handlers.keys()).join(
-      ",",
-    )}&tsyms=USD&api_key=${API_KEY}`,
-  )
-    .then<Record<string, Record<"USD", number>>>(d => d.json())
-    .then(rawData => {
-      console.log("rawData", rawData);
-      const updatedPrices = Object.fromEntries(Object.entries(rawData).map(([key, value]) => [key, value.USD]));
+  const tHandlers = handlers.get(updatedTicker) || [];
+  tHandlers.forEach(fn => fn(newPrice));
+});
 
-      Object.entries(updatedPrices).forEach(([cur, newPrice]) => {
-        const tHandlers = handlers.get(cur) || [];
-        tHandlers.forEach(fn => fn(newPrice));
-      });
-    });
-};
+function sendToWS(message: Record<string, unknown>) {
+  const stringifiedMessage = JSON.stringify(message);
+
+  if (socket.readyState === WebSocket.OPEN) {
+    socket.send(stringifiedMessage);
+    return;
+  }
+
+  socket.addEventListener("open", () => socket.send(stringifiedMessage), { once: true });
+}
+
+function subsToTickerOnWs(tickerName: string) {
+  sendToWS({
+    action: "SubAdd",
+    subs: [`5~CCCAGG~${tickerName}~USD`],
+  });
+}
+
+function unsubsFromTickerOnWs(tickerName: string) {
+  sendToWS({
+    action: "SubRemove",
+    subs: [`5~CCCAGG~${tickerName}~USD`],
+  });
+}
+
+type PriceChanged = (newPrice: number) => void;
 
 const unSubscribeFromTicker = (tickerName: string) => {
   handlers.delete(tickerName);
-  // const subs = handlers.get(tickerName) || [];
-  // handlers.set(
-  //   tickerName,
-  //   subs.filter(fn => fn !== cb),
-  // );
+  unsubsFromTickerOnWs(tickerName);
 };
 
 const subscribeToTicker = (tickerName: string, cb: PriceChanged) => {
   const subs = handlers.get(tickerName) || [];
   handlers.set(tickerName, [...subs, cb]);
+  subsToTickerOnWs(tickerName);
 };
 
 const loadTickersSummary = (): Promise<{ Data: Record<string, TokenSummary> }> =>
@@ -55,8 +68,3 @@ export const api = {
   subscribeToTicker,
   unSubscribeFromTicker,
 };
-
-setInterval(loadTickers, 5000);
-// eslint-disable-next-line @typescript-eslint/ban-ts-ignore
-// @ts-ignore
-window.handlers = handlers;
